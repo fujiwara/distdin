@@ -8,7 +8,7 @@ Distribute stdin to multiple sub commands.
 $ distdin [-n Num of sub commands] [-v] command args ...
 ```
 
-## Example: Distribulted grep
+## Example: Distributed grep
 
 ```
 $ distdin -n 4 grep Foo < file
