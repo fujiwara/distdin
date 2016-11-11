@@ -95,12 +95,13 @@ func worker(command []string, start, done *sync.WaitGroup) {
 		cmd = exec.Command(command[0], command[1:len(command)]...)
 	}
 
-	stdin, err := cmd.StdinPipe()
+	_stdin, err := cmd.StdinPipe()
 	if err != nil {
 		start.Done()
 		errorLog(err)
 		return
 	}
+	stdin := bufio.NewWriter(_stdin)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -122,7 +123,8 @@ func worker(command []string, start, done *sync.WaitGroup) {
 			break
 		}
 	}
-	stdin.Close()
+	stdin.Flush()
+	_stdin.Close()
 	cmd.Wait()
 }
 
