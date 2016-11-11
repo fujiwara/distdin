@@ -12,13 +12,15 @@ import (
 	"runtime/pprof"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var (
 	Verbose bool
-	Workers chan bool
+	Workers int64
 	mu      sync.Mutex
-	stdinCh chan string
+	stdinCh = make(chan string, 8192)
+	LF      = []byte{'\n'}
 )
 
 func main() {
@@ -39,17 +41,14 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	stdinCh = make(chan string, 4096)
 	command := flag.Args()
 	if len(command) == 0 {
 		fmt.Fprintln(os.Stderr, "sub command required")
 		os.Exit(1)
 	}
 
-	var start sync.WaitGroup
-	var done sync.WaitGroup
+	var start, done sync.WaitGroup
 
-	Workers = make(chan bool, n)
 	for i := 0; i < n; i++ {
 		done.Add(1)
 		start.Add(1)
@@ -71,7 +70,7 @@ func reader(src io.ReadCloser, done *sync.WaitGroup) {
 	scanner := bufio.NewScanner(src)
 	for scanner.Scan() {
 		b := scanner.Text()
-		if len(Workers) == 0 {
+		if atomic.LoadInt64(&Workers) == 0 {
 			verboseLog("all commands are unavaiable")
 			return
 		}
@@ -81,10 +80,8 @@ func reader(src io.ReadCloser, done *sync.WaitGroup) {
 }
 
 func worker(command []string, start, done *sync.WaitGroup) {
-	Workers <- true
-	defer func() {
-		<-Workers
-	}()
+	atomic.AddInt64(&Workers, 1)
+	defer atomic.AddInt64(&Workers, -1)
 	defer done.Done()
 
 	verboseLog("invoking command", strings.Join(command, " "))
@@ -117,13 +114,18 @@ func worker(command []string, start, done *sync.WaitGroup) {
 			verboseLog("worker done")
 			break
 		}
-		_, err := fmt.Fprintln(stdin, input)
-		if err != nil {
+		if _, err := io.WriteString(stdin, input); err != nil {
+			errorLog("failed to write to STDIN", err)
+			break
+		}
+		if _, err := stdin.Write(LF); err != nil {
 			errorLog("failed to write to STDIN", err)
 			break
 		}
 	}
-	stdin.Flush()
+	if err := stdin.Flush(); err != nil {
+		errorLog("failed to flush to STDIN", err)
+	}
 	_stdin.Close()
 	cmd.Wait()
 }
