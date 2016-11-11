@@ -2,6 +2,10 @@
 
 Distribute stdin to multiple sub commands.
 
+## Install
+
+`go get github.com/fujiwara/distdin`
+
 ## Usage
 
 ```
