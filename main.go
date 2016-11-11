@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 )
@@ -17,15 +18,28 @@ var (
 	Verbose bool
 	Workers chan bool
 	mu      sync.Mutex
-	stdinCh = make(chan string)
+	stdinCh chan string
 )
 
 func main() {
 	var n int
+	var profile string
 	flag.IntVar(&n, "n", runtime.NumCPU(), "workers num")
+	flag.StringVar(&profile, "profile", "", "prof filename")
 	flag.BoolVar(&Verbose, "v", false, "verbose mode")
 	flag.Parse()
 
+	if profile != "" {
+		verboseLog("CPU profile enabled", profile)
+		f, err := os.Create(profile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	stdinCh = make(chan string, 4096)
 	command := flag.Args()
 	if len(command) == 0 {
 		fmt.Fprintln(os.Stderr, "sub command required")
@@ -57,7 +71,6 @@ func reader(src io.ReadCloser, done *sync.WaitGroup) {
 	scanner := bufio.NewScanner(src)
 	for scanner.Scan() {
 		b := scanner.Text()
-		verboseLog("input", string(b))
 		if len(Workers) == 0 {
 			verboseLog("all commands are unavaiable")
 			return
